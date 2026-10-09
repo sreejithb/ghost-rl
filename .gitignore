@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+.coverage
+
+# Virtual environments
+.venv/
+venv/
+
+# Training outputs (large, and can be regenerated)
+runs/
+checkpoints/
+*.pt
+wandb/
+*.log
+
+# Renders (keep the few you choose for the write-up in docs/)
+renders/
+*.gif
+!docs/*.gif
+
+# Secrets
+.env
+
+# Editor and OS
+.vscode/
+.DS_Store
+
+# Claude Code: your personal settings stay local
+.claude/settings.local.json
+
+# Project docs kept local
+CLAUDE.md
+docs/setup-plan.md
+docs/simulator-spec.md

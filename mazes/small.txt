@@ -1,0 +1,12 @@
+; Small debug maze, 11 x 7, no tunnel.
+;scatter blinky -2 10
+;scatter pinky -2 0
+;scatter inky 8 10
+;scatter clyde 8 0
+###########
+#o.......o#
+#.##.#.##.#
+#.P..#....#
+#.##.#.##.#
+#o.GGGG..o#
+###########
