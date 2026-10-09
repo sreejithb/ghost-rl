@@ -74,10 +74,10 @@ def main():
 @app.local_entrypoint()
 def train(name: str = "arcade1", maze: str = "arcade", steps: int = 20_000_000, envs: int = 256,
           num_steps: int = 128, minibatches: int = 8, seed: int = 0, ent_coef: float = 0.01,
-          history: bool = False):
+          history: bool = False, lr: float = 2.5e-4, lr_final: float = 0.0):
     flags.pop(name, None)
     cfg = dict(maze=maze, total_steps=steps, num_envs=envs, num_steps=num_steps, minibatches=minibatches, seed=seed,
-               ent_coef=ent_coef, history=history, eval_games=200, ckpt_every=10)
+               ent_coef=ent_coef, history=history, lr=lr, lr_final=lr_final, eval_games=200, ckpt_every=10)
     print(f"starting '{name}' on {GPU}: {cfg}")
     print(train_remote.remote(name, cfg))
 

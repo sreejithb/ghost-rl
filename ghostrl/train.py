@@ -28,7 +28,8 @@ class Config:
     num_envs: int = 64
     num_steps: int = 128
     total_steps: int = 2_000_000
-    lr: float = 2.5e-4
+    lr: float = 2.5e-4  # learning rate at the start; decays linearly to lr_final
+    lr_final: float = 0.0
     gamma: float = 0.99
     gae_lambda: float = 0.95
     epochs: int = 4
@@ -146,7 +147,7 @@ def train(cfg: Config, on_update=None) -> dict:
 
     for u in range(1, updates + 1):
         for g in opt.param_groups:
-            g["lr"] = cfg.lr * (1 - (u - 1) / updates)
+            g["lr"] = cfg.lr_final + (cfg.lr - cfg.lr_final) * (1 - (u - 1) / updates)
         for t in range(T):
             p, s, mk = to_torch(obs, dev)
             planes[t], scalars[t], masks[t], dones[t] = p.to(torch.uint8), s, mk, next_done
