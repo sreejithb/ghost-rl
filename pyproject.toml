@@ -6,6 +6,7 @@ dependencies = ["numpy"]
 
 [project.optional-dependencies]
 dev = ["pytest"]
+train = ["torch"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

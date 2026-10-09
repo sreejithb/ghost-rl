@@ -95,9 +95,8 @@ class Sim:
 
     def ticks_to_switch(self, tick):
         """Ticks until the next mode switch (observation hook); large when none left."""
-        sw = self.switch_ticks()
-        i = np.searchsorted(sw, tick, side="right")
-        nxt = np.where(i < len(sw), sw[np.minimum(i, len(sw) - 1)], np.iinfo(np.int64).max // 2)
+        sw = np.append(self.switch_ticks(), np.iinfo(np.int64).max // 2)  # sentinel: no switch left
+        nxt = sw[np.searchsorted(sw, tick, side="right")]
         return nxt - tick
 
     def mode_time(self, state: State) -> np.ndarray:
