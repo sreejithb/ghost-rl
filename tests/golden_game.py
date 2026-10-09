@@ -9,7 +9,8 @@ import numpy as np
 from ghostrl.maze import REVERSE, load_maze
 from ghostrl.sim import Sim
 
-GOLDEN_PATH = "tests/golden/classic_game.npz"
+GOLDEN_PATH = "tests/golden/classic_game.npz"  # short scatter-only game (evader below)
+FULL_PATH = "tests/golden/classic_full_game.npz"  # long game replayed from a recorded action log
 SEED = 0  # picked so the game outlasts the whole scatter/chase schedule (see make_golden.py)
 
 
@@ -46,4 +47,26 @@ def play_golden(seed: int = SEED) -> dict[str, np.ndarray]:
         rewards.append(r[0])
     outcome = int(info["captured"][0]) + 2 * int(info["cleared"][0]) + 4 * int(info["timeout"][0])
     return dict(pac_pos=np.array(pac), ghost_pos=np.array(ghosts), rewards=np.array(rewards),
+                dots_left=np.array(int(s.dots.sum())), outcome=np.array(outcome))
+
+
+def play_actions(pac_actions) -> dict[str, np.ndarray]:
+    """Replay a recorded Pac-Man action log (classic ghosts). No planner, no policy: only the sim runs."""
+    sim = Sim(load_maze("arcade"))
+    s = sim.reset(1)
+    pac, ghosts, rewards, power, eaten, switched = [], [], [], [], [], []
+    for a in pac_actions:
+        if s.done[0]:
+            raise AssertionError("action log is longer than the game")
+        r, info = sim.step(s, np.array([a]))
+        pac.append(s.pac_pos[0])
+        ghosts.append(s.ghost_pos[0].copy())
+        rewards.append(r[0])
+        power.append(info["power"][0])
+        eaten.append(info["ghosts_eaten"][0].copy())
+        switched.append(info["switched"][0])
+    outcome = int(info["captured"][0]) + 2 * int(info["cleared"][0]) + 4 * int(info["timeout"][0])
+    return dict(pac_actions=np.asarray(pac_actions, dtype=np.int8), pac_pos=np.array(pac),
+                ghost_pos=np.array(ghosts), rewards=np.array(rewards), power=np.array(power),
+                eaten=np.array(eaten), switched=np.array(switched),
                 dots_left=np.array(int(s.dots.sum())), outcome=np.array(outcome))
