@@ -98,3 +98,27 @@ def test_history_adds_trail_planes_and_scalars_and_clears_them_on_reset():
     place(env.state, m, pac=(1, 6), ghosts={0: (1, 4)}, ghost_dirs={0: RIGHT})
     env.step([LEFT])  # captured -> auto reset
     assert env.observe()["planes"][0, N_PLANES:].sum() == 0
+
+
+def test_atari_rewards_chain_ghost_points_and_restart_at_each_power_pellet():
+    from ghostrl.env import ATARI
+    m = hand_maze("#############\n#P.o........#\n#############\n")
+    m.dots0[:] = False
+    m.dots0[tile(m, 1, 3)] = True
+    m.dots0[tile(m, 1, 11)] = True
+    env = GhostRLEnv(Sim(m, SimConfig(scatter_ticks=(0, 0, 0, 0))), 1, pac_reward=ATARI)
+    # two frightened ghosts on Pac-Man's next tile: 200 + 400
+    place(env.state, m, pac=(1, 2), pac_dir=RIGHT, ghosts={0: (1, 4), 1: (1, 4)}, ghost_dirs={0: LEFT, 1: LEFT})
+    env.state.frightened[0, :2] = True
+    env.state.fright_left[0] = 40
+    _, r, done, info = env.step([RIGHT])  # eats the pellet (10 + 40) and both ghosts (200 + 400)
+    assert info["ghosts_eaten"][0].sum() == 2 and not done[0]
+    assert r[0] == pytest.approx(10 + 40 + 200 + 400)
+    # a third ghost in the same pellet pays 800, a fourth 1600
+    for g, want in ((2, 800.0), (3, 1600.0)):
+        env.state.frightened[0, g] = True
+        env.state.fright_left[0] = 40
+        place(env.state, m, pac=(1, 5), ghosts={g: (1, 6)}, ghost_dirs={g: LEFT})
+        _, r, _, _ = env.step([RIGHT])
+        assert r[0] == pytest.approx(want)
+    assert env._chain[0] == 4

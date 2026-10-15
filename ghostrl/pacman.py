@@ -99,8 +99,11 @@ class SearchPlanner:
     def __init__(self, sim, n_rollouts: int = 12, depth: int = 25, seed: int = 0,
                  death_cost: float = 60.0, ghost_bonus: float = 6.0, dot_pull: float = 0.05,
                  eps: float = 0.0, reserve: bool = False, crn: bool = True,
-                 heading_bonus: float = 0.3, reserve_range: int = 10):
+                 heading_bonus: float = 0.3, reserve_range: int = 10, fear_w: float = 3.0, fear_cap: float = 6.0,
+                 dotnext_w: float = 2.0, prey_w: float = 0.5, noise: float = 1.0):
         self.reserve, self.crn, self.heading_bonus, self.reserve_range = reserve, crn, heading_bonus, reserve_range
+        # weights of the greedy rule that plays Pac-Man inside the futures
+        self.fear_w, self.fear_cap, self.dotnext_w, self.prey_w, self.noise = fear_w, fear_cap, dotnext_w, prey_w, noise
         self.sim, self.m = sim, sim.maze
         self.n, self.depth, self.rng = n_rollouts, depth, np.random.default_rng(seed)
         self.death_cost, self.ghost_bonus, self.dot_pull, self.eps = death_cost, ghost_bonus, dot_pull, eps
@@ -137,8 +140,8 @@ class SearchPlanner:
         gd = m.dist_free[n[:, :, None], s.ghost_pos[:, None, :]].astype(np.float64)  # R x 4 x 4
         live = np.where(s.frightened[:, None, :], np.inf, gd).min(-1)
         prey = np.where(s.frightened[:, None, :], gd, np.inf).min(-1)
-        score = (3.0 * np.minimum(live, 6.0) + 2.0 * s.dots[np.arange(R)[:, None], n]
-                 - np.where(np.isfinite(prey), 0.5 * prey, 0.0) + noise)
+        score = (self.fear_w * np.minimum(live, self.fear_cap) + self.dotnext_w * s.dots[np.arange(R)[:, None], n]
+                 - np.where(np.isfinite(prey), self.prey_w * prey, 0.0) + self.noise * noise)
         if self.reserve:
             score = score - 8.0 * (m.power0[n] & self._hold_pellets(s)[:, None])
         return np.where(legal, score, -np.inf).argmax(1)

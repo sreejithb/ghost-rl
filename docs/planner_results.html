@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pac-Man baselines</title>
+<style>
+:root{--bg:#fafaf7;--fg:#1d1d1b;--mute:#6b6b66;--line:#dcdcd4;--head:#efefe8;--best:#e6f3e6;--accent:#2a5bd7}
+@media (prefers-color-scheme: dark){:root{--bg:#17171a;--fg:#ececea;--mute:#9a9a94;--line:#34343a;--head:#222227;--best:#1f3324;--accent:#8fb0ff}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:1200px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:24px;margin:0 0 4px}h2{font-size:17px;margin:32px 0 8px}p{color:var(--mute);margin:4px 0}
+.wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;min-width:760px}
+th,td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--head);font-weight:600;font-size:13px}tr:last-child td{border-bottom:0}
+.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.best td{background:var(--best)}
+.foot{font-size:13px;color:var(--mute)}.foot li{margin:3px 0}
+</style></head><body><main>
+<h1>Pac-Man baselines</h1>
+<p>Every number is Pac-Man against the classic ghosts on the arcade maze (244 dots), unless a heading says otherwise. Green rows have the fewest dots left. None of the 6,200 games played by the RL policies clears the maze.</p>
+<h2>Planners (no training)</h2><div class='wrap'><table><thead><tr><th>Planner</th><th class='n'>Games</th><th class='n'>Mazes cleared</th><th class='n'>Dots left (of 244)</th><th class='n'>Ticks per game</th><th class='n'>Return*</th><th class='n'>Speed</th><th>Notes</th></tr></thead><tbody>
+<tr class='best'><td>Flat Monte-Carlo search (8 futures × 25 ticks)</td><td class='n'>200</td><td class='n'>9 / 200 (4.5%)</td><td class='n'>49</td><td class='n'>347</td><td class='n'>20.8</td><td class='n'>458 steps/s</td><td>Best planner. Plays 8 short futures per move in the real simulator; ghosts modelled as path-chasers. Eats 5.4 ghosts per game.</td></tr>
+<tr><td>Flat search + pellet reserve + same random numbers + heading bonus</td><td class='n'>100</td><td class='n'>7 / 100 (7.0%)</td><td class='n'>50</td><td class='n'>375</td><td class='n'>—</td><td class='n'>≈ 500 steps/s</td><td>Earlier test of three tweaks together; no gain over the plain version.</td></tr>
+<tr><td>Flat search, pellet reserve range 4</td><td class='n'>100</td><td class='n'>7 / 100 (7.0%)</td><td class='n'>63</td><td class='n'>447</td><td class='n'>—</td><td class='n'>≈ 500 steps/s</td><td>Lives longer, eats fewer dots.</td></tr>
+<tr><td>Flat search, 12 futures × 40 ticks</td><td class='n'>40</td><td class='n'>1 / 40 (2.5%)</td><td class='n'>53</td><td class='n'>341</td><td class='n'>—</td><td class='n'>236 steps/s</td><td>More futures and a deeper lookahead did not help.</td></tr>
+<tr><td>UCT tree search, 32 iterations</td><td class='n'>100</td><td class='n'>0 / 100 (0.0%)</td><td class='n'>57</td><td class='n'>311</td><td class='n'>—</td><td class='n'>197 steps/s</td><td>Tree search with greedy rollouts; worse and slower than the flat search.</td></tr>
+<tr><td>UCT tree search, 64 iterations</td><td class='n'>100</td><td class='n'>0 / 100 (0.0%)</td><td class='n'>50</td><td class='n'>317</td><td class='n'>—</td><td class='n'>87 steps/s</td><td>Slower still, same result.</td></tr>
+<tr><td>Territory planner (safe-area search, exact ghost timing)</td><td class='n'>200</td><td class='n'>0 / 200 (0.0%)</td><td class='n'>83</td><td class='n'>702</td><td class='n'>12.6</td><td class='n'>1,301 steps/s</td><td>The first planner. Survives long but eats less. Eats 3.9 ghosts per game.</td></tr>
+</tbody></table></div>
+<h2>Reinforcement learning (PPO, 5M steps unless noted, arcade maze)</h2><div class='wrap'><table><thead><tr><th>Run group</th><th>Settings</th><th class='n'>Seeds</th><th class='n'>Games</th><th class='n'>Mazes cleared</th><th class='n'>Dots left, average (range over seeds)</th><th class='n'>Ticks per game</th><th class='n'>Return*</th></tr></thead><tbody>
+<tr><td>PPO · abA_base</td><td>lr 2.5e-4 → 0, entropy 0.05, 256 games</td><td class='n'>2</td><td class='n'>400</td><td class='n'>0 / 400 (0.0%)</td><td class='n'>81 (80–82)</td><td class='n'>240</td><td class='n'>14.7</td></tr>
+<tr><td>PPO · abB_hist</td><td>same + trail planes</td><td class='n'>2</td><td class='n'>400</td><td class='n'>0 / 400 (0.0%)</td><td class='n'>101 (92–110)</td><td class='n'>239</td><td class='n'>13.1</td></tr>
+<tr><td>PPO · lrB_base</td><td>lr 0.01 → 0.001, entropy 0.05, 512 games</td><td class='n'>3</td><td class='n'>600</td><td class='n'>0 / 600 (0.0%)</td><td class='n'>77 (50–110)</td><td class='n'>248</td><td class='n'>15.5</td></tr>
+<tr><td>PPO · lrB_hist</td><td>same + trail planes</td><td class='n'>2</td><td class='n'>400</td><td class='n'>0 / 400 (0.0%)</td><td class='n'>80 (60–100)</td><td class='n'>244</td><td class='n'>15.0</td></tr>
+<tr><td>PPO · entD</td><td>lr 0.01 → 0.001, entropy 0.1</td><td class='n'>3</td><td class='n'>600</td><td class='n'>0 / 600 (0.0%)</td><td class='n'>85 (52–136)</td><td class='n'>237</td><td class='n'>15.2</td></tr>
+<tr><td>PPO · entC</td><td>lr 0.01 → 0.001, entropy 0.25</td><td class='n'>3</td><td class='n'>600</td><td class='n'>0 / 600 (0.0%)</td><td class='n'>159 (131–211)</td><td class='n'>192</td><td class='n'>4.7</td></tr>
+<tr><td>PPO · g999</td><td>default reward, discount 0.999, entropy 0.05</td><td class='n'>3</td><td class='n'>600</td><td class='n'>0 / 600 (0.0%)</td><td class='n'>76 (50–102)</td><td class='n'>239</td><td class='n'>16.2</td></tr>
+<tr><td>PPO · atari_g099</td><td>Atari points, discount 0.99, no tick cost</td><td class='n'>3</td><td class='n'>600</td><td class='n'>0 / 600 (0.0%)</td><td class='n'>99 (64–121)</td><td class='n'>234</td><td class='n'>— (Atari)</td></tr>
+<tr><td>PPO · atari_g09</td><td>Atari points, discount 0.9, no tick cost</td><td class='n'>3</td><td class='n'>600</td><td class='n'>0 / 600 (0.0%)</td><td class='n'>126 (80–155)</td><td class='n'>202</td><td class='n'>— (Atari)</td></tr>
+<tr><td>PPO · noterm</td><td>no reward for capture or clear, tick −0.05</td><td class='n'>3</td><td class='n'>600</td><td class='n'>0 / 600 (0.0%)</td><td class='n'>94 (89–100)</td><td class='n'>178</td><td class='n'>— (tick −0.05)</td></tr>
+<tr><td>PPO · noterm_cont</td><td>the noterm runs continued to 10M steps</td><td class='n'>3</td><td class='n'>600</td><td class='n'>0 / 600 (0.0%)</td><td class='n'>89 (77–100)</td><td class='n'>176</td><td class='n'>— (tick −0.05)</td></tr>
+<tr><td>PPO · long run (stopped at 19M steps)</td><td>lr 0.01 → 0.001, entropy 0.1; cancelled early by Modal</td><td class='n'>1</td><td class='n'>200</td><td class='n'>0 / 200 (0.0%)</td><td class='n'>80 (1 run)</td><td class='n'>269</td><td class='n'>17.8</td></tr>
+</tbody></table></div>
+<h2>Territory planner against other ghost types (100 games each)</h2><div class='wrap'><table><thead><tr><th>Ghosts</th><th class='n'>Mazes cleared</th><th class='n'>Caught</th><th class='n'>Timed out (2,000 ticks)</th><th class='n'>Dots left</th><th class='n'>Ticks per game</th></tr></thead><tbody>
+<tr><td>Classic ghosts</td><td class='n'>0 / 100</td><td class='n'>99</td><td class='n'>1</td><td class='n'>81</td><td class='n'>645</td></tr>
+<tr><td>Path-chasing ghosts (neutral model)</td><td class='n'>0 / 100</td><td class='n'>55</td><td class='n'>45</td><td class='n'>78</td><td class='n'>1335</td></tr>
+<tr><td>Random-move ghosts</td><td class='n'>1 / 100</td><td class='n'>6</td><td class='n'>93</td><td class='n'>25</td><td class='n'>1952</td></tr>
+</tbody></table></div>
+<ul class="foot">
+<li><b>Mazes cleared</b>: games where Pac-Man ate all 244 dots. <b>Dots left</b>: dots remaining when the game ended. <b>Ticks per game</b>: average game length (the limit is 2,000).</li>
+<li>*<b>Return</b> uses the default reward: +0.1 per dot, +0.5 extra per power pellet, +1 per ghost eaten, −5 if caught, +10 for clearing, −0.005 per tick. Groups trained on a different reward show a dash, because their returns are in other units.</li>
+<li>Planners play 100–200 games with 2% random moves, so repeated games differ. RL numbers come from 200 sampled-move games per seed. Greedy (most-likely-move) evaluation is a single repeated game and is left out.</li>
+<li>With 2 to 3 seeds the RL results are noisy: seeds in one group often differ by more than the gaps between groups. Treat gaps under about 30 dots as noise.</li>
+<li>Planner and RL runs measured at different times. RL training speed was about 10,000 steps/s on a T4 GPU (laptop CPU: 300–500).</li>
+</ul></main></body></html>

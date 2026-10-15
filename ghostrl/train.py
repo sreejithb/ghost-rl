@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 from torch.distributions import Categorical
 
-from .env import GhostRLEnv
+from .env import ATARI, NOTERM, GhostRLEnv, PacmanReward
 from .maze import load_maze
 from .sim import Sim, SimConfig
 
@@ -37,6 +37,8 @@ class Config:
     clip: float = 0.2
     ent_coef: float = 0.01
     history: bool = False  # trail planes + 2 extra scalars (see env.py)
+    init_from: str = ""  # path to a checkpoint.pt: start from its weights (fresh optimizer) and continue its step count
+    reward: str = "default"  # "default", "atari" or "noterm" (see env.py)
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
     reward_scale: float = 0.2  # rewards run to about +30 per clear; keeps the value targets modest
@@ -80,9 +82,10 @@ def to_torch(obs, device):
 
 
 @torch.no_grad()
-def evaluate(net: Net, sim: Sim, games: int, device: str, greedy: bool = True, seed: int = 123) -> dict:
+def evaluate(net: Net, sim: Sim, games: int, device: str, greedy: bool = True, seed: int = 123,
+             reward: PacmanReward | None = None) -> dict:
     """Play `games` full games against the classic ghosts; one game per environment."""
-    env = GhostRLEnv(sim, games, history=net.history)
+    env = GhostRLEnv(sim, games, history=net.history, pac_reward=reward)
     obs = env.reset()
     gen = torch.Generator(device="cpu").manual_seed(seed)
     stats = dict(ret=np.zeros(games), length=np.zeros(games), captured=np.zeros(games, bool),
@@ -117,9 +120,16 @@ def train(cfg: Config, on_update=None) -> dict:
     dev = cfg.device
     sim = Sim(load_maze(cfg.maze), SimConfig(max_ticks=cfg.max_ticks))
     m = sim.maze
-    env = GhostRLEnv(sim, cfg.num_envs, history=cfg.history)
+    rew = {"atari": ATARI, "noterm": NOTERM}.get(cfg.reward, PacmanReward())
+    env = GhostRLEnv(sim, cfg.num_envs, history=cfg.history, pac_reward=rew)
     net = Net(m.H, m.W, env.n_planes, env.n_scalars, cfg.history).to(dev)
     NP, NS = env.n_planes, env.n_scalars
+    base = 0  # steps already trained in the checkpoint we start from (only used for logging)
+    if cfg.init_from:
+        ck = torch.load(cfg.init_from, map_location=dev)
+        net.load_state_dict(ck["net"])
+        base = ck.get("steps", ck["update"] * ck["cfg"]["num_envs"] * ck["cfg"]["num_steps"])
+        print(f"resumed from {cfg.init_from} at {base:,} steps", flush=True)
     opt = torch.optim.Adam(net.parameters(), lr=cfg.lr, eps=1e-5)
 
     T, N = cfg.num_steps, cfg.num_envs
@@ -201,7 +211,7 @@ def train(cfg: Config, on_update=None) -> dict:
             ev = 1 - ((b_ret - b_val).var() / (b_ret.var() + 1e-8)).item()
         sps = step_count / (time.time() - t0)
         R = np.array(recent, dtype=float).reshape(-1, 5)
-        last = dict(update=u, steps=step_count, sps=sps, episodes=len(R),
+        last = dict(update=u, steps=base + step_count, sps=sps, episodes=len(R),
                     ep_return=R[:, 0].mean() if len(R) else float("nan"),
                     ep_length=R[:, 1].mean() if len(R) else float("nan"),
                     clear_rate=R[:, 2].mean() if len(R) else float("nan"),
@@ -216,28 +226,29 @@ def train(cfg: Config, on_update=None) -> dict:
                       explained_var="loss/explained_variance", sps="speed/steps_per_second")
         for k, tag in groups.items():
             if not np.isnan(last[k]):
-                tb.add_scalar(tag, last[k], step_count)
-        tb.add_scalar("loss/learning_rate", opt.param_groups[0]["lr"], step_count)
+                tb.add_scalar(tag, last[k], base + step_count)
+        tb.add_scalar("loss/learning_rate", opt.param_groups[0]["lr"], base + step_count)
         tb.flush()
         if on_update is not None:
             on_update(u, out)
         stop = (out / "STOP").exists()
         if u == 1 or u % 10 == 0 or u == updates:
-            print(f"[{u}/{updates}] steps {step_count:,} sps {sps:,.0f} ret {last['ep_return']:.2f} "
+            print(f"[{u}/{updates}] steps {base + step_count:,} sps {sps:,.0f} ret {last['ep_return']:.2f} "
                   f"len {last['ep_length']:.0f} clear {last['clear_rate']:.2f} dots_left {last['dots_left']:.0f} "
                   f"ent {last['entropy']:.2f} kl {kl:.4f}", flush=True)
         if u % cfg.ckpt_every == 0 or u == updates or stop:
-            torch.save(dict(net=net.state_dict(), cfg=asdict(cfg), update=u), out / "checkpoint.pt")
+            torch.save(dict(net=net.state_dict(), cfg=asdict(cfg), update=u, steps=base + step_count), out / "checkpoint.pt")
         if stop:
             print(f"STOP file found: ending at update {u}", flush=True)
             break
     f.close()
-    result = {"greedy": evaluate(net, sim, cfg.eval_games, dev, True), "sampled": evaluate(net, sim, cfg.eval_games, dev, False)}
+    result = {"greedy": evaluate(net, sim, cfg.eval_games, dev, True, reward=rew),
+              "sampled": evaluate(net, sim, cfg.eval_games, dev, False, reward=rew)}
     result["train_last"] = {k: (float(v) if not isinstance(v, int) else v) for k, v in last.items()}
     (out / "eval.json").write_text(json.dumps(result, indent=2))
     for mode in ("greedy", "sampled"):
         for k in ("clear_rate", "capture_rate", "mean_return", "mean_length", "mean_dots_left"):
-            tb.add_scalar(f"eval_{mode}/{k}", result[mode][k], step_count)
+            tb.add_scalar(f"eval_{mode}/{k}", result[mode][k], base + step_count)
     tb.close()
     if on_update is not None:
         on_update(-1, out)

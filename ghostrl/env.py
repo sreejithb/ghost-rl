@@ -39,10 +39,26 @@ class PacmanReward:
     death: float = -5.0
     clear: float = 10.0
     tick: float = -0.005
+    # If set, ghosts eaten during one power pellet pay these in turn (the arcade's 200, 400, 800, 1600)
+    # instead of the flat `ghost_eaten`. The chain restarts at every power pellet.
+    ghost_chain: tuple[float, ...] | None = None
 
 
-def pacman_reward(info: dict, r: PacmanReward) -> np.ndarray:
-    return (r.dot * info["ate"] + r.power * info["power"] + r.ghost_eaten * info["ghosts_eaten"].sum(1)
+# Atari Ms. Pac-Man points (10 per dot, 50 per power pellet, 200-1600 per ghost), plus a capture penalty
+# and a clear bonus scaled up to the same units. No per-tick cost: discounting already prefers sooner reward.
+ATARI = PacmanReward(dot=10.0, power=40.0, ghost_eaten=200.0, death=-500.0, clear=5000.0, tick=0.0,
+                     ghost_chain=(200.0, 400.0, 800.0, 1600.0))
+
+
+# The original small values, but the game just ends on a capture or a clear (no reward for either) and
+# every tick costs 0.05, to push him to finish. A negative tick cost makes dying a way to stop paying it.
+NOTERM = PacmanReward(dot=0.1, power=0.5, ghost_eaten=1.0, death=0.0, clear=0.0, tick=-0.05)
+
+
+def pacman_reward(info: dict, r: PacmanReward, ghost_pay=None) -> np.ndarray:
+    """B rewards. `ghost_pay` (B) overrides the flat per-ghost reward (used for the chain)."""
+    ghosts = r.ghost_eaten * info["ghosts_eaten"].sum(1) if ghost_pay is None else ghost_pay
+    return (r.dot * info["ate"] + r.power * info["power"] + ghosts
             + r.death * info["captured"] + r.clear * info["cleared"] + r.tick * ~info["was_done"]) * ~info["was_done"]
 
 
@@ -53,6 +69,7 @@ class GhostRLEnv:
             raise ValueError("controls must be 'pacman' or 'ghosts'")
         self.sim, self.B, self.controls, self.opponent = sim, B, controls, opponent
         self.pac_reward = pac_reward or PacmanReward()
+        self._chain = np.zeros(B, dtype=np.int64)  # ghosts eaten since the last power pellet
         self.history = history
         self.n_planes, self.n_scalars = obs_dims(history)
         self._prev = np.full((2, B, 5), -1, dtype=np.int64)  # tile 1 and 2 ticks ago: pac, ghost x4 (-1 = none)
@@ -115,6 +132,7 @@ class GhostRLEnv:
         self.ep_return[:] = 0
         self.ep_len[:] = 0
         self._prev[:] = -1
+        self._chain[:] = 0
         return self.observe()
 
     def step(self, actions):
@@ -135,7 +153,20 @@ class GhostRLEnv:
         self._prev[1], self._prev[0] = self._prev[0], before
         self._prev[:, was_done] = -1
         info["was_done"] = was_done
-        reward = sim_reward if self.controls == "ghosts" else pacman_reward(info, self.pac_reward)
+        if self.controls == "ghosts":
+            reward = sim_reward
+        else:
+            pay = None
+            chain = self.pac_reward.ghost_chain
+            if chain is not None:
+                self._chain = np.where(info["power"], 0, self._chain)
+                k = info["ghosts_eaten"].sum(1)
+                table = np.asarray(chain)
+                pay = np.zeros(self.B)
+                for i in range(int(k.max()) if k.size else 0):
+                    pay += (k > i) * table[np.minimum(self._chain + i, len(table) - 1)]
+                self._chain = self._chain + k
+            reward = pacman_reward(info, self.pac_reward, pay)
         self.ep_return += reward
         self.ep_len += ~was_done
         done = s.done & ~was_done
@@ -145,6 +176,7 @@ class GhostRLEnv:
         if done.any():
             sim.reset_where(s, s.done)
             self._prev[:, done] = -1
+            self._chain[done] = 0
             self.ep_return[done] = 0
             self.ep_len[done] = 0
         info["final"] = final
